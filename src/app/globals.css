@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+:root {
+  --background: #070608;
+  --foreground: #ededed;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-roboto);
+  --font-condensed: var(--font-roboto-condensed);
+  --font-slab: var(--font-roboto-slab);
+}
+
+html {
+  scrollbar-color: rgba(168, 85, 247, 0.4) #070608;
+  scrollbar-width: thin;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-roboto), system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+/* Custom Scrollbar Matching Dark Neon / Luxury Studio Colors */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070608;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.35) 0%, rgba(168, 85, 247, 0.45) 100%);
+  border-radius: 9999px;
+  border: 2px solid #070608;
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.65) 0%, rgba(168, 85, 247, 0.75) 100%);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+}
+
+/* Override WebKit / Chrome / Safari / Edge auto-fill white background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #181420 inset !important;
+  -webkit-text-fill-color: #f4f4f5 !important;
+  caret-color: #f4f4f5 !important;
+  border-radius: inherit;
+  transition: background-color 5000s ease-in-out 0s;
+}
