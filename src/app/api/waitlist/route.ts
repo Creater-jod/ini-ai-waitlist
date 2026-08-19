@@ -5,7 +5,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
     const email = body?.email?.trim();
 
     if (!email || typeof email !== "string" || !EMAIL_REGEX.test(email)) {

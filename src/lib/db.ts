@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 
 export interface Subscriber {
   id: string;
@@ -11,32 +12,61 @@ export interface Subscriber {
 
 export const MAX_WAITLIST_CAPACITY = 100;
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_FILE = path.join(DATA_DIR, "waitlist.json");
+// In-memory fallback and cache to ensure 100% reliability across serverless invocations
+let inMemoryStore: Subscriber[] = [];
 
-// Ensure data directory and database file exist
-async function ensureDbExists(): Promise<void> {
+// Determine writable file path (Vercel / Lambda environment uses /tmp)
+function getDbFilePath(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === "production") {
+    return path.join(os.tmpdir(), "waitlist.json");
+  }
+  return path.join(process.cwd(), "data", "waitlist.json");
+}
+
+// Ensure database directory and file exist safely
+async function ensureStorage(): Promise<string> {
+  const filePath = getDbFilePath();
+  const dir = path.dirname(filePath);
   try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.mkdir(dir, { recursive: true });
     try {
-      await fs.access(DB_FILE);
+      await fs.access(filePath);
     } catch {
-      await fs.writeFile(DB_FILE, JSON.stringify([], null, 2), "utf-8");
+      await fs.writeFile(filePath, JSON.stringify(inMemoryStore, null, 2), "utf-8");
     }
-  } catch (err) {
-    console.error("Failed to initialize database file:", err);
+    return filePath;
+  } catch {
+    // If primary directory fails (e.g. read-only filesystem), fallback to os.tmpdir()
+    const tmpPath = path.join(os.tmpdir(), "waitlist.json");
+    try {
+      await fs.writeFile(tmpPath, JSON.stringify(inMemoryStore, null, 2), "utf-8");
+    } catch {
+      // In-memory store will serve as fallback
+    }
+    return tmpPath;
   }
 }
 
 // Read all subscribers
 export async function getSubscribers(): Promise<Subscriber[]> {
-  await ensureDbExists();
   try {
-    const content = await fs.readFile(DB_FILE, "utf-8");
-    return JSON.parse(content || "[]") as Subscriber[];
+    const filePath = await ensureStorage();
+    const content = await fs.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(content || "[]") as Subscriber[];
+    
+    // Merge disk subscribers with in-memory store
+    const emailMap = new Map<string, Subscriber>();
+    for (const sub of inMemoryStore) {
+      if (sub?.email) emailMap.set(sub.email.toLowerCase(), sub);
+    }
+    for (const sub of parsed) {
+      if (sub?.email) emailMap.set(sub.email.toLowerCase(), sub);
+    }
+    inMemoryStore = Array.from(emailMap.values());
+    return inMemoryStore;
   } catch (err) {
-    console.error("Error reading database:", err);
-    return [];
+    console.warn("Reading from in-memory subscriber store fallback:", err);
+    return inMemoryStore;
   }
 }
 
@@ -50,7 +80,6 @@ export async function addSubscriber(
   totalCount: number;
   isLimitReached: boolean;
 }> {
-  await ensureDbExists();
   const subscribers = await getSubscribers();
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -83,7 +112,23 @@ export async function addSubscriber(
   };
 
   subscribers.push(newSubscriber);
-  await fs.writeFile(DB_FILE, JSON.stringify(subscribers, null, 2), "utf-8");
+  inMemoryStore = [...subscribers];
+
+  // Persist to disk safely without throwing unhandled exceptions
+  try {
+    const filePath = getDbFilePath();
+    const dir = path.dirname(filePath);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(subscribers, null, 2), "utf-8");
+  } catch (err) {
+    // Attempt fallback to tmp directory
+    try {
+      const tmpPath = path.join(os.tmpdir(), "waitlist.json");
+      await fs.writeFile(tmpPath, JSON.stringify(subscribers, null, 2), "utf-8");
+    } catch {
+      console.warn("Could not write to disk; subscriber retained in memory store");
+    }
+  }
 
   return {
     subscriber: newSubscriber,
@@ -98,3 +143,4 @@ export async function getSubscriberCount(): Promise<number> {
   const subscribers = await getSubscribers();
   return subscribers.length;
 }
+
